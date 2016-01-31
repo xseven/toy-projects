@@ -13,6 +13,6 @@ TEMPLATE = app
 
 
 SOURCES += main.cpp\
-        mainwindow.cpp
+        stubmodel.cpp
 
-HEADERS  += mainwindow.h
+HEADERS  += stubmodel.h
