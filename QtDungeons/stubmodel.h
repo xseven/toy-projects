@@ -3,6 +3,9 @@
 
 #include <QAbstractTableModel>
 
+typedef QPair<QString, QString> evilType;
+Q_DECLARE_METATYPE(evilType);
+
 class StubModel : public QAbstractTableModel
 {
     Q_OBJECT

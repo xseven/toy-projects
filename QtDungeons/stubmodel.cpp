@@ -5,7 +5,8 @@ StubModel::StubModel(QObject *parent) :
 {
     _data << "hello model world";
     _data << 0xABC;
-    _data << true;
+    _data << true;    
+    _data << QVariant::fromValue(evilType("once", "twice"));
 }
 
 
@@ -24,7 +25,20 @@ QVariant StubModel::data(const QModelIndex &index, int role) const
     if(!index.isValid())
         return QVariant();
 
-    if(Qt::DisplayRole == role || Qt::EditRole == role)
+    if(Qt::DisplayRole == role)
+    {
+        auto item = _data.at(index.row());
+
+        if(QVariant::fromValue(evilType()).userType() == item.userType())
+        {
+            auto parsedItem = item.value<evilType>();
+
+            return QVariant(parsedItem.first + " " + parsedItem.second);
+        }
+
+        return item;
+    }
+    else if(Qt::EditRole == role)
     {
         return _data.at(index.row());
     }

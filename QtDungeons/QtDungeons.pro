@@ -13,6 +13,8 @@ TEMPLATE = app
 
 
 SOURCES += main.cpp\
-        stubmodel.cpp
+        stubmodel.cpp \
+    eviltypeeditor.cpp
 
-HEADERS  += stubmodel.h
+HEADERS  += stubmodel.h \
+    eviltypeeditor.h

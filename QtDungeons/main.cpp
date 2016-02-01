@@ -1,4 +1,5 @@
 #include "stubmodel.h"
+#include "eviltypeeditor.h"
 
 #include <QApplication>
 #include <QTableView>
@@ -6,11 +7,18 @@
 
 namespace
 {
+    
     void overrideEditorFactory(void)
     {
-        auto factory = new QItemEditorFactory;
+        auto dFactory = new QItemEditorFactory;
 
-        QItemEditorFactory::setDefaultFactory(factory);
+        const auto typeID = QVariant::fromValue(evilType()).userType();
+
+        auto evilCreator = new QStandardItemEditorCreator<EvilTypeEditor>();
+
+        dFactory->registerEditor(typeID, evilCreator);
+
+        QItemEditorFactory::setDefaultFactory(dFactory);
     }
 }
 
