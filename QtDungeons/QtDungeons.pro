@@ -18,3 +18,5 @@ SOURCES += main.cpp\
 
 HEADERS  += stubmodel.h \
     eviltypeeditor.h
+
+CONFIG += c++11

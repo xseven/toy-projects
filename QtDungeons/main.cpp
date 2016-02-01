@@ -6,19 +6,39 @@
 #include <QItemEditorFactory>
 
 namespace
-{
-    
+{    
     void overrideEditorFactory(void)
     {
-        auto dFactory = new QItemEditorFactory;
+        class OverridenEditorFactory : public QItemEditorFactory
+        {
+            public:
+                explicit OverridenEditorFactory(const QItemEditorFactory* dFactory)
+                    : _dFactory(dFactory)
+                {
+                    auto creator = new QStandardItemEditorCreator<EvilTypeEditor>();
 
-        const auto typeID = QVariant::fromValue(evilType()).userType();
+                    const auto evilTypeID = QVariant::fromValue(evilType()).userType();
 
-        auto evilCreator = new QStandardItemEditorCreator<EvilTypeEditor>();
+                    registerEditor(evilTypeID, creator);
+                }
 
-        dFactory->registerEditor(typeID, evilCreator);
+                QWidget* createEditor(int userType, QWidget *parent) const
+                {
+                    const auto evilTypeID = QVariant::fromValue(evilType()).userType();
 
-        QItemEditorFactory::setDefaultFactory(dFactory);
+                    if(evilTypeID == userType)
+                    {
+                        return QItemEditorFactory::createEditor(userType, parent);
+                    }
+
+                    return _dFactory->createEditor(userType, parent);
+                }
+
+            private:
+                const QItemEditorFactory*   _dFactory;
+        };
+
+        QItemEditorFactory::setDefaultFactory(new OverridenEditorFactory(QItemEditorFactory::defaultFactory()));
     }
 }
 

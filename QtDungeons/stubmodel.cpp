@@ -33,7 +33,7 @@ QVariant StubModel::data(const QModelIndex &index, int role) const
         {
             auto parsedItem = item.value<evilType>();
 
-            return QVariant(parsedItem.first + " " + parsedItem.second);
+            return QVariant(parsedItem.first);
         }
 
         return item;
