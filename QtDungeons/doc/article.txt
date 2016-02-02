@@ -1,0 +1,71 @@
+<img src="https://raw.githubusercontent.com/xseven/toy-projects/master/QtDungeons/doc/dungeon%20sktch.jpg" alt="image"/>
+
+Всякому профессиональному разработчику приложений, использующему Qt, довольно часто приходится использовать связку model/delegate/view для различных манипуляций с данными. Основные детали этого шаблона хорошо описаны в стандартном <a href = "http://doc.qt.io/qt-5/model-view-programming.html">руководстве</a> на эту тему, однако, часто приходится сталкиваться с ситуацией, когда стандартное поведение необходимо расширить или дополнить под конкретные нужды. Обычно, тут и начинается то, за что мы все любим программирование - поездка на любимых самокатах и рикшах - придумывается собственное решение. Именно в этот момент внутренний голос должен бы нас остановить, но мы ловко парируем: "Я уже смотрел, документации много - читать долго, сроки поджимают и еще масса других дел. А главное, не ясно откуда начинать искать". Именно поэтому, любой уважающий себя разработчик должен иметь под рукой собственноручно собранные и опробованные  рецепты и стараться пополнять свою коллекцию. 
+
+<cut>
+
+<h2>Постановка задачи</h2>
+
+Создадим черновик простого редактора разнородных данных на основе QAbstractTableModel и добавим пользовательский тип evilType (да да, именно этот тип требует дополнительных ухищрений). 
+
+Как правило, у этой задачи есть два решения:
+
+<ol>
+<li> Переопределить функцию createEditor у QAbstractItemDelegate или его производных</li>
+
+<li> Добавить собственный редактор для пользовательского типа и переопределить стандартную фабрику редакторов QDefaultItemEditorFactory </li>
+</ol>
+Минусы первого подхода состоят в том, что если у нас несколько видов и делегатов к ним, что, как правило, и есть в случае мало-мальски сложной программы, то нужно дублировать код createEditor для различных делегатов.
+
+Минусы второго подхода - переопределение стандартной фабрики редакторов ведет к потере фабрики QDefaultItemEditorFactory и, соответственно, необходимости повторной регистрации стандартных редакторов в нашей фабрике. 
+
+<h2> Наш самокат</h2>
+Гибридный класс, содержащий в себе стандартную фабрику и переопределяющий createEditor для пользовательских типов.
+
+<spoiler title="Код">
+<source lang="C++">
+void overrideEditorFactory(void)
+    {
+        class OverridenEditorFactory : public QItemEditorFactory
+        {
+            public:
+                explicit OverridenEditorFactory(const QItemEditorFactory* dFactory)
+                    : _dFactory(dFactory)
+                {
+                    auto creator = new QStandardItemEditorCreator<EvilTypeEditor>();
+
+                    const auto evilTypeID = QVariant::fromValue(evilType()).userType();
+
+                    registerEditor(evilTypeID, creator);
+                }
+
+                QWidget* createEditor(int userType, QWidget *parent) const
+                {
+                    const auto evilTypeID = QVariant::fromValue(evilType()).userType();
+
+                    if(evilTypeID == userType)
+                    {
+                        return QItemEditorFactory::createEditor(userType, parent);
+                    }
+
+                    return _dFactory->createEditor(userType, parent);
+                }
+
+            private:
+                const QItemEditorFactory*   _dFactory;
+        };
+
+        QItemEditorFactory::setDefaultFactory(new OverridenEditorFactory(QItemEditorFactory::defaultFactory()));
+    }
+</source>
+</spoiler>
+
+Таким образом, перед использованием нужно вызвать функцию переопределяющую стандартную фабрику. И теперь пользовательский тип везде будет редактироваться согласно наших пожеланий. 
+
+<h2>Заключение</h2>
+
+Код в основном иллюстративный, поэтому отдельные моменты можно улучшить. но основной подход - минимализм кода и легкость масштабирования на множество отображений при использовании различных делегатов сохранена.
+
+Полный код проекта на <a href = "https://github.com/xseven/toy-projects/tree/master/QtDungeons">github</a>
+
+</cut>
