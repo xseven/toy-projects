@@ -1,0 +1,478 @@
+From 3b76fef8e4ce45193ad5d1fafd77a396952c2771 Mon Sep 17 00:00:00 2001
+From: "a.demidenko" <kibarabara@gmail.com>
+Date: Sat, 10 Mar 2018 11:26:28 +0300
+Subject: [PATCH] XmlTreeViewer
+
+---
+ Engine/source/gui/controls/guiXmlTreeViewCtrl.cpp  | 270 +++++++++++++++++++++
+ Engine/source/gui/controls/guiXmlTreeViewCtrl.h    |  83 +++++++
+ Templates/Empty/game/core/main.cs                  |   1 +
+ .../game/core/scripts/gui/guiXmlTreeViewCtrl.cs    |  28 +++
+ Templates/Full/game/core/main.cs                   |   1 +
+ .../game/core/scripts/gui/guiXmlTreeViewCtrl.cs    |  28 +++
+ 6 files changed, 411 insertions(+)
+ create mode 100644 Engine/source/gui/controls/guiXmlTreeViewCtrl.cpp
+ create mode 100644 Engine/source/gui/controls/guiXmlTreeViewCtrl.h
+ create mode 100644 Templates/Empty/game/core/scripts/gui/guiXmlTreeViewCtrl.cs
+ create mode 100644 Templates/Full/game/core/scripts/gui/guiXmlTreeViewCtrl.cs
+
+diff --git a/Engine/source/gui/controls/guiXmlTreeViewCtrl.cpp b/Engine/source/gui/controls/guiXmlTreeViewCtrl.cpp
+new file mode 100644
+index 00000000..e6b0ed1b
+--- /dev/null
++++ b/Engine/source/gui/controls/guiXmlTreeViewCtrl.cpp
+@@ -0,0 +1,270 @@
++//-----------------------------------------------------------------------------
++// Copyright (c) 2012 GarageGames, LLC
++//
++// Permission is hereby granted, free of charge, to any person obtaining a copy
++// of this software and associated documentation files (the "Software"), to
++// deal in the Software without restriction, including without limitation the
++// rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
++// sell copies of the Software, and to permit persons to whom the Software is
++// furnished to do so, subject to the following conditions:
++//
++// The above copyright notice and this permission notice shall be included in
++// all copies or substantial portions of the Software.
++//
++// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
++// IN THE SOFTWARE.
++//-----------------------------------------------------------------------------
++
++#include "platform/platform.h"
++
++#include "gui/controls/guiXmlTreeViewCtrl.h"
++
++#include "gui/core/guiTypes.h"
++#include "gui/core/guiControl.h"
++
++#include "gui/controls/guiTreeViewCtrl.h"
++#include "gui/controls/guiTextCtrl.h"
++
++#include "console/consoleTypes.h"
++#include "console/console.h"
++
++#include "tinyxml.h"
++
++#ifdef TORQUE_TOOLS
++   #include "gui/editor/editorFunctions.h"
++#endif
++#include "console/engineAPI.h"
++#ifdef TORQUE_EXPERIMENTAL_EC
++#include "T3D/entity.h"
++#endif
++
++IMPLEMENT_CONOBJECT(GuiXmlTreeViewCtrl);
++
++ConsoleDocClass( GuiXmlTreeViewCtrl,
++   "@brief Hierarchical list of text items with optional icons.\n\n"
++
++   "Can also be used to inspect SimObject hierarchies, primarily within editors.\n\n"
++
++   "GuiTreeViewCtrls can either display arbitrary user-defined trees or can be used to display SimObject hierarchies where "
++   "each parent node in the tree is a SimSet or SimGroup and each leaf node is a SimObject.\n\n"
++
++   "Each item in the tree has a text and a value.  For trees that display SimObject hierarchies, the text for each item "
++   "is automatically derived from objects while the value for each item is the ID of the respective SimObject.  For trees "
++   "that are not tied to SimObjects, both text and value of each item are set by the user.\n\n"
++
++   "Additionally, items in the tree can have icons.\n\n"
++
++   "Each item in the tree has a distinct numeric ID that is unique within its tree.  The ID of the root item, which is always "
++   "present on a tree, is 0.\n\n"
++
++   "@tsexample\n"
++   "new GuiTreeViewCtrl(DatablockEditorTree)\n"
++   "{\n"
++   "  tabSize = \"16\";\n"
++   "  textOffset = \"2\";\n"
++   "  fullRowSelect = \"0\";\n"
++   "  itemHeight = \"21\";\n"
++   "  destroyTreeOnSleep = \"0\";\n"
++   "  MouseDragging = \"0\";\n"
++   "  MultipleSelections = \"1\";\n"
++   "  DeleteObjectAllowed = \"1\";\n"
++   "  DragToItemAllowed = \"0\";\n"
++   "  ClearAllOnSingleSelection = \"1\";\n"
++   "  showRoot = \"1\";\n"
++   "  internalNamesOnly = \"0\";\n"
++   "  objectNamesOnly = \"0\";\n"
++   "  compareToObjectID = \"0\";\n"
++   "  Profile = \"GuiTreeViewProfile\";\n"
++   "  tooltipprofile = \"GuiToolTipProfile\";\n"
++   "  hovertime = \"1000\";\n"
++   "};\n"
++   "@endtsexample\n\n"
++
++   "@ingroup GuiContainers\n");
++
++
++DefineEngineMethod(GuiXmlTreeViewCtrl, displayValue, void, (S32 idx), ,
++	"Get the ID of the item whose text matches the given @a text.\n\n"
++	"@param text Item text to match.\n"
++	"@return ID of the item or -1 if no item matches the given text.")
++{
++	return object->displayValue(idx);
++}
++
++GuiXmlTreeViewCtrl::GuiXmlTreeViewCtrl()
++	: mXmlFilePath(StringTable->EmptyString())
++{
++	gui.tree = NULL;
++	gui.text = NULL;
++}
++
++GuiXmlTreeViewCtrl::~GuiXmlTreeViewCtrl()
++{
++	setField("xmlFilePath", "");
++
++	if (gui.tree) {
++		removeObject(gui.tree);
++	}
++
++	if (gui.text) {
++		removeObject(gui.text);
++	}
++}
++
++void GuiXmlTreeViewCtrl::initPersistFields()
++{
++	addProtectedField("xmlFilePath"
++		, TypeString
++		, Offset(mXmlFilePath, GuiXmlTreeViewCtrl)
++		, &setProtectedXmlFilePath
++		, &defaultProtectedGetFn
++		, "Path to XML file");
++
++	Parent::initPersistFields();
++}
++
++bool GuiXmlTreeViewCtrl::setProtectedXmlFilePath(void *obj, const char *index, const char *data)
++{
++	GuiXmlTreeViewCtrl *xmlViewer = static_cast<GuiXmlTreeViewCtrl*>(obj);
++	
++	xmlViewer->setXmlFilePath(data);
++		
++	return false;
++}
++
++void GuiXmlTreeViewCtrl::setXmlFilePath(const char* data)
++{	
++	if (!getParent()) {
++		return;
++	}	
++
++	if (0 != dStrcmp(mXmlFilePath, data)) {
++		mXmlFilePath = StringTable->insert(data);
++
++		if( !(gui.tree && gui.text) ) {
++			_initializeProfiles();
++			_initializeChildElements();
++		}
++		else {
++			gui.tree->removeItem(0);
++		}
++
++		loadXmlFile();
++
++		gui.tree->getParent();
++	}			
++}
++
++void GuiXmlTreeViewCtrl::loadXmlFile()
++{
++	if (gui.tree && gui.text) {		
++		TiXmlDocument doc(mXmlFilePath);
++
++
++		if (doc.LoadFile()) {
++			TiXmlElement* element = doc.FirstChildElement();
++
++			Map<void*, S32> nodesMap;
++			nodesMap.insert(element->parent, 0);
++
++			while (element) {
++				const char* value = element->Value();
++				const char* text = element->GetText();
++
++				assert(nodesMap.contains(element->parent));
++				S32 idx = gui.tree->insertItem(nodesMap[element->parent], value ? value : "", text ? text : "");
++				nodesMap.insert(element, idx);
++
++				TiXmlElement* prevElement = element;
++				element = element->FirstChildElement();
++
++				if (!element) {
++					element = prevElement->NextSiblingElement();
++				}
++			
++				if (!element) {
++					element = prevElement->parent ? prevElement->parent->ToElement()->NextSiblingElement() : NULL;					
++				}
++			}
++		}
++		else {
++			Con::errorf("Unable to load xml file: %s", mXmlFilePath);			
++		}
++	}
++}
++
++
++void GuiXmlTreeViewCtrl::_initializeChildElements()
++{
++	if (guiProfile.isSet && tooltipProfile.isSet) {
++
++		gui.tree = new GuiTreeViewCtrl();
++
++		if (gui.tree->registerObject()) {
++			gui.tree->setControlProfile(guiProfile.tree);
++			gui.tree->setTooltipProfile(tooltipProfile.tree);
++		}
++		else {
++			Con::errorf(ConsoleLogEntry::GUI, "Unable to register GuiTreeViewCtrl within GuiXmlTreeViewCtrl");
++			SAFE_DELETE(gui.tree);
++		}
++
++		gui.text = new GuiTextCtrl();
++
++		if (gui.text->registerObject()) {
++			gui.text->setControlProfile(guiProfile.text);
++			gui.text->setTooltipProfile(tooltipProfile.text);
++		}
++		else {
++			Con::errorf(ConsoleLogEntry::GUI, "Unable to register GuiTextCtrl within GuiXmlTreeViewCtrl");
++			SAFE_DELETE(gui.text);
++		}
++	
++		if (gui.tree && gui.text) {			
++			addObject(gui.tree);
++			addObject(gui.text);
++		}
++	}
++}
++
++void GuiXmlTreeViewCtrl::_initializeProfiles()
++{
++	guiProfile.isSet = Sim::findObject("ToolsGuiTreeViewProfile", guiProfile.tree);
++    guiProfile.isSet &= Sim::findObject("GuiDefaultProfile", guiProfile.text);
++
++	if (!guiProfile.isSet) {
++		Con::errorf(ConsoleLogEntry::GUI, "Unable to obtain GUI profiles");
++	}
++
++	tooltipProfile.isSet = Sim::findObject("GuiTooltipProfile", tooltipProfile.tree);
++    tooltipProfile.isSet &= Sim::findObject("GuiTooltipProfile", tooltipProfile.text);
++
++	if (!tooltipProfile.isSet) {
++		Con::errorf(ConsoleLogEntry::GUI, "Unable to obtain ToolTip profiles");
++	}	
++}
++
++void GuiXmlTreeViewCtrl::displayValue(S32 idx)
++{
++	if (gui.tree && gui.text) {
++		const char* text = gui.tree->getItemValue(idx);
++
++		if(text)
++			gui.text->setText(text);
++	}
++}
++
++bool GuiXmlTreeViewCtrl::onWake()
++{	
++	return Parent::onWake();
++}
++
++void GuiXmlTreeViewCtrl::onSleep()
++{
++	Parent::onSleep();
++}
+diff --git a/Engine/source/gui/controls/guiXmlTreeViewCtrl.h b/Engine/source/gui/controls/guiXmlTreeViewCtrl.h
+new file mode 100644
+index 00000000..3e88ad39
+--- /dev/null
++++ b/Engine/source/gui/controls/guiXmlTreeViewCtrl.h
+@@ -0,0 +1,83 @@
++//-----------------------------------------------------------------------------
++// Copyright (c) 2012 GarageGames, LLC
++//
++// Permission is hereby granted, free of charge, to any person obtaining a copy
++// of this software and associated documentation files (the "Software"), to
++// deal in the Software without restriction, including without limitation the
++// rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
++// sell copies of the Software, and to permit persons to whom the Software is
++// furnished to do so, subject to the following conditions:
++//
++// The above copyright notice and this permission notice shall be included in
++// all copies or substantial portions of the Software.
++//
++// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
++// IN THE SOFTWARE.
++//-----------------------------------------------------------------------------
++
++#ifndef _GUI_XMLTREEVIEWCTRL_H
++#define _GUI_XMLTREEVIEWCTRL_H
++
++#include "gui/containers/guiStackCtrl.h"
++
++class GuiTreeViewCtrl;
++class GuiTextCtrl;
++
++class GuiXmlTreeViewCtrl : public GuiStackControl
++{
++   private:
++      typedef GuiStackControl parent;	  
++
++   public:
++	  GuiXmlTreeViewCtrl();
++      virtual ~GuiXmlTreeViewCtrl();	
++
++	  static void initPersistFields();
++	  
++	  static bool setProtectedXmlFilePath(void *obj, const char *index, const char *data);
++
++	  void setXmlFilePath(const char* data);
++	  void loadXmlFile();
++
++	  void displayValue(S32 idx);
++	  	  
++	  virtual bool onWake();	  
++	  virtual void onSleep();
++	  	  
++      DECLARE_CONOBJECT(GuiXmlTreeViewCtrl);
++      DECLARE_CATEGORY( "Gui Lists" );
++      DECLARE_DESCRIPTION("Custom Xml Structure Viewer");
++
++	private:
++		void _initializeChildElements();
++		void _initializeProfiles();
++
++	private:
++		StringTableEntry mXmlFilePath;		
++
++		struct {
++			GuiTreeViewCtrl* tree;
++			GuiTextCtrl* text;			
++		} gui;
++
++		struct {
++			GuiControlProfile* tree = NULL;
++			GuiControlProfile* text = NULL;
++
++			bool isSet = false;
++		} guiProfile;
++
++		struct {
++			GuiControlProfile* tree = NULL;
++			GuiControlProfile* text = NULL;
++
++			bool isSet = false;
++		} tooltipProfile;
++};
++
++#endif
+diff --git a/Templates/Empty/game/core/main.cs b/Templates/Empty/game/core/main.cs
+index f666c948..74b693b3 100644
+--- a/Templates/Empty/game/core/main.cs
++++ b/Templates/Empty/game/core/main.cs
+@@ -79,6 +79,7 @@ function onStart()
+    exec("./scripts/server/server.cs");
+    
+    exec("./scripts/gui/guiTreeViewCtrl.cs");
++   exec("./scripts/gui/guiXmlTreeViewCtrl.cs");
+    exec("./scripts/gui/messageBoxes/messageBox.ed.cs");
+    
+    echo(" % - Initialized Core");
+diff --git a/Templates/Empty/game/core/scripts/gui/guiXmlTreeViewCtrl.cs b/Templates/Empty/game/core/scripts/gui/guiXmlTreeViewCtrl.cs
+new file mode 100644
+index 00000000..acbe7e62
+--- /dev/null
++++ b/Templates/Empty/game/core/scripts/gui/guiXmlTreeViewCtrl.cs
+@@ -0,0 +1,28 @@
++//-----------------------------------------------------------------------------
++// Copyright (c) 2012 GarageGames, LLC
++//
++// Permission is hereby granted, free of charge, to any person obtaining a copy
++// of this software and associated documentation files (the "Software"), to
++// deal in the Software without restriction, including without limitation the
++// rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
++// sell copies of the Software, and to permit persons to whom the Software is
++// furnished to do so, subject to the following conditions:
++//
++// The above copyright notice and this permission notice shall be included in
++// all copies or substantial portions of the Software.
++//
++// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
++// IN THE SOFTWARE.
++//-----------------------------------------------------------------------------
++
++function GuiTreeViewCtrl::onSelect( %this, %idx )
++{
++    %parent = %this.getParent();
++    %parent.displayValue(%idx);	
++}
++
+diff --git a/Templates/Full/game/core/main.cs b/Templates/Full/game/core/main.cs
+index f666c948..74b693b3 100644
+--- a/Templates/Full/game/core/main.cs
++++ b/Templates/Full/game/core/main.cs
+@@ -79,6 +79,7 @@ function onStart()
+    exec("./scripts/server/server.cs");
+    
+    exec("./scripts/gui/guiTreeViewCtrl.cs");
++   exec("./scripts/gui/guiXmlTreeViewCtrl.cs");
+    exec("./scripts/gui/messageBoxes/messageBox.ed.cs");
+    
+    echo(" % - Initialized Core");
+diff --git a/Templates/Full/game/core/scripts/gui/guiXmlTreeViewCtrl.cs b/Templates/Full/game/core/scripts/gui/guiXmlTreeViewCtrl.cs
+new file mode 100644
+index 00000000..acbe7e62
+--- /dev/null
++++ b/Templates/Full/game/core/scripts/gui/guiXmlTreeViewCtrl.cs
+@@ -0,0 +1,28 @@
++//-----------------------------------------------------------------------------
++// Copyright (c) 2012 GarageGames, LLC
++//
++// Permission is hereby granted, free of charge, to any person obtaining a copy
++// of this software and associated documentation files (the "Software"), to
++// deal in the Software without restriction, including without limitation the
++// rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
++// sell copies of the Software, and to permit persons to whom the Software is
++// furnished to do so, subject to the following conditions:
++//
++// The above copyright notice and this permission notice shall be included in
++// all copies or substantial portions of the Software.
++//
++// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
++// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
++// IN THE SOFTWARE.
++//-----------------------------------------------------------------------------
++
++function GuiTreeViewCtrl::onSelect( %this, %idx )
++{
++    %parent = %this.getParent();
++    %parent.displayValue(%idx);	
++}
++
+-- 
+2.15.1.windows.2
+
