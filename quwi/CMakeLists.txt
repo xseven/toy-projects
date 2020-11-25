@@ -14,7 +14,9 @@ endif()
 
 find_package(Qt5 COMPONENTS 
 Widgets 
-Network 
+Network
+Qml
+Quick
 REQUIRED)
 
 add_executable(quwi-client
@@ -22,6 +24,11 @@ add_executable(quwi-client
     
     http-auth.cpp
     http-auth.h
+
+    projectsmodel.cpp
+    projectsmodel.h
+	
+	resources.qrc
 )
 
-target_link_libraries(quwi-client Qt5::Widgets Qt5::Network)
+target_link_libraries(quwi-client Qt5::Widgets Qt5::Network Qt5::Qml Qt5::Quick)
